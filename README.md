@@ -166,12 +166,6 @@ npm run dev
 ## 📸 Screenshots
 <img width="1919" height="908" alt="image" src="https://github.com/user-attachments/assets/bbb1d9df-292a-4e72-961e-425d27459cf3" />
 
-* GitHub Login
-* User Profile & Repositories
-* Explore Popular Repos
-* Likes Page
-
-(Add screenshots here if you want — optional but recommended for portfolio.)
 
 ---
 
