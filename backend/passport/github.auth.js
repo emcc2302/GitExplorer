@@ -22,7 +22,8 @@ passport.use(
 		{
 			clientID: process.env.GITHUB_CLIENT_ID,
 			clientSecret: process.env.GITHUB_CLIENT_SECRET,
-			callbackURL: "https://mern-github-app.onrender.com/api/auth/github/callback",
+			callbackURL:"https://gitexplorer-backend-2xtf.onrender.com/api/auth/github/callback",
+
 			
 		},
 		
