@@ -49,7 +49,7 @@ This project is built with **production-grade authentication, API handling, and 
 * **Frontend:**
 
   ```
- https://git-explorer-soriful-islam-sks-projects.vercel.app/
+   https://git-explorer-soriful-islam-sks-projects.vercel.app/
   ```
 
 * **Backend API:**
