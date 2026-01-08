@@ -1,8 +1,9 @@
 import User from "../models/user.model.js";
 
-/**
- * Get GitHub user profile + repositories
- */
+const githubCache = new Map();
+
+const CACHE_TTL = 5 * 60 * 1000;
+
 export const getUserProfileAndRepos = async (req, res) => {
 	const { username } = req.params;
 
@@ -13,16 +14,31 @@ export const getUserProfileAndRepos = async (req, res) => {
 			});
 		}
 
-		// Fetch GitHub user
-		const userRes = await fetch(`https://api.github.com/users/${username}`, {
-			headers: {
-				Authorization: `Bearer ${process.env.GITHUB_API_KEY}`,
-				Accept: "application/vnd.github+json",
-			},
-		});
+		const cached = githubCache.get(username);
+		if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+			console.log("Serving from cache:", username);
+			return res.status(200).json(cached.data);
+		}
+
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+		const headers = {
+			Authorization: `Bearer ${process.env.GITHUB_API_KEY}`,
+			Accept: "application/vnd.github+json",
+		};
+
+		const userRes = await fetch(
+			`https://api.github.com/users/${username}`,
+			{
+				headers,
+				signal: controller.signal,
+			}
+		);
 
 		if (!userRes.ok) {
 			const text = await userRes.text();
+			clearTimeout(timeoutId);
 			return res.status(userRes.status).json({
 				error: "Failed to fetch GitHub user",
 				details: text,
@@ -32,21 +48,20 @@ export const getUserProfileAndRepos = async (req, res) => {
 		const userProfile = await userRes.json();
 
 		if (!userProfile.repos_url) {
+			clearTimeout(timeoutId);
 			return res.status(500).json({
 				error: "GitHub repos_url missing",
 			});
 		}
 
-		// Fetch repositories
 		const repoRes = await fetch(userProfile.repos_url, {
-			headers: {
-				Authorization: `Bearer ${process.env.GITHUB_API_KEY}`,
-				Accept: "application/vnd.github+json",
-			},
+			headers,
+			signal: controller.signal,
 		});
 
 		if (!repoRes.ok) {
 			const text = await repoRes.text();
+			clearTimeout(timeoutId);
 			return res.status(repoRes.status).json({
 				error: "Failed to fetch repositories",
 				details: text,
@@ -55,16 +70,28 @@ export const getUserProfileAndRepos = async (req, res) => {
 
 		const repos = await repoRes.json();
 
-		res.status(200).json({ userProfile, repos });
+		clearTimeout(timeoutId);
+
+		const responseData = { userProfile, repos };
+
+		githubCache.set(username, {
+			data: responseData,
+			timestamp: Date.now(),
+		});
+
+		res.status(200).json(responseData);
 	} catch (error) {
+		if (error.name === "AbortError") {
+			return res.status(504).json({
+				error: "GitHub API request timed out",
+			});
+		}
+
 		console.error("GitHub fetch error:", error);
 		res.status(500).json({ error: error.message });
 	}
 };
 
-/**
- * Like a user profile
- */
 export const likeProfile = async (req, res) => {
 	try {
 		const { username } = req.params;
@@ -101,9 +128,6 @@ export const likeProfile = async (req, res) => {
 	}
 };
 
-/**
- * Get users who liked the logged-in user
- */
 export const getLikes = async (req, res) => {
 	try {
 		if (!req.user) {
