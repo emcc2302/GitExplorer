@@ -1,0 +1,133 @@
+import "./config/env.js";
+
+import express from "express";
+import cors from "cors";
+import passport from "passport";
+import session from "express-session";
+import { createServer } from "http";
+import { Server } from "socket.io";
+
+import "./passport/github.auth.js";
+
+import authRoutes from "./routes/auth.route.js";
+import userRoutes from "./routes/user.route.js";
+import exploreRoutes from "./routes/explore.route.js";
+import chatRoutes from "./routes/chat.route.js";
+
+import connectMongoDB from "./db/connectMongoDB.js";
+import { Message } from "./models/user.model.js";
+
+const app = express();
+const httpServer = createServer(app);
+const PORT = process.env.PORT || 5000;
+const isProduction = process.env.NODE_ENV === "production";
+
+app.use(
+	cors({
+		origin: process.env.CLIENT_BASE_URL,
+		credentials: true,
+	})
+);
+
+app.use(express.json());
+
+const sessionMiddleware = session({
+	name: "connect.sid",
+	secret: process.env.SESSION_SECRET,
+	resave: false,
+	saveUninitialized: false,
+	cookie: {
+		// secure:true and sameSite:"none" only work over HTTPS (production)
+		// On localhost (HTTP) both must be false/lax or the session cookie won't be sent
+		secure: isProduction,
+		sameSite: isProduction ? "none" : "lax",
+		httpOnly: true,
+		maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+	},
+});
+
+app.use(sessionMiddleware);
+app.use(passport.initialize());
+app.use(passport.session());
+
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/explore", exploreRoutes);
+app.use("/api/chat", chatRoutes);
+
+// Socket.io setup
+const io = new Server(httpServer, {
+	cors: {
+		origin: process.env.CLIENT_BASE_URL,
+		credentials: true,
+	},
+});
+
+// Share session with socket.io
+io.use((socket, next) => {
+	sessionMiddleware(socket.request, {}, next);
+});
+
+io.use((socket, next) => {
+	passport.initialize()(socket.request, {}, () => {
+		passport.session()(socket.request, {}, next);
+	});
+});
+
+// Track online users: username -> socketId
+const onlineUsers = new Map();
+
+io.on("connection", (socket) => {
+	const user = socket.request.user;
+	if (!user) {
+		socket.disconnect();
+		return;
+	}
+
+	const username = user.username;
+	onlineUsers.set(username, socket.id);
+	io.emit("online_users", Array.from(onlineUsers.keys()));
+
+	console.log(`✅ ${username} connected via socket`);
+
+	socket.on("send_message", async ({ to, content }) => {
+		if (!content?.trim()) return;
+		try {
+			const message = await Message.create({
+				senderId: username,
+				receiverId: to,
+				content: content.trim(),
+			});
+
+			const payload = {
+				_id: message._id,
+				senderId: username,
+				receiverId: to,
+				content: message.content,
+				createdAt: message.createdAt,
+			};
+
+			// Send to recipient if online
+			const recipientSocketId = onlineUsers.get(to);
+			if (recipientSocketId) {
+				io.to(recipientSocketId).emit("receive_message", payload);
+			}
+
+			// Echo back to sender
+			socket.emit("message_sent", payload);
+		} catch (err) {
+			socket.emit("error", { message: "Failed to send message" });
+		}
+	});
+
+	socket.on("disconnect", () => {
+		onlineUsers.delete(username);
+		io.emit("online_users", Array.from(onlineUsers.keys()));
+		console.log(`❌ ${username} disconnected`);
+	});
+});
+
+await connectMongoDB();
+httpServer.listen(PORT, () => {
+	console.log(`🚀 Server running on port ${PORT} [${isProduction ? "production" : "development"}]`);
+});
