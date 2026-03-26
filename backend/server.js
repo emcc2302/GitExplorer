@@ -6,6 +6,7 @@ import passport from "passport";
 import session from "express-session";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import MongoStore from "connect-mongo";
 
 import "./passport/github.auth.js";
 
@@ -32,18 +33,22 @@ app.use(
 app.use(express.json());
 
 const sessionMiddleware = session({
-	name: "connect.sid",
-	secret: process.env.SESSION_SECRET,
-	resave: false,
-	saveUninitialized: false,
-	cookie: {
+    name: "connect.sid",
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
 		// secure:true and sameSite:"none" only work over HTTPS (production)
 		// On localhost (HTTP) both must be false/lax or the session cookie won't be sent
-		secure: isProduction,
-		sameSite: isProduction ? "none" : "lax",
-		httpOnly: true,
-		maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-	},
+        mongoUrl: process.env.MONGO_URI,
+        ttl: 7 * 24 * 60 * 60,
+    }),
+    cookie: {
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "lax",
+        httpOnly: true,
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
 });
 
 app.use(sessionMiddleware);
