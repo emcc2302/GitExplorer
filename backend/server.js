@@ -23,32 +23,42 @@ const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === "production";
 
-app.use(
-	cors({
-		origin: process.env.CLIENT_BASE_URL,
-		credentials: true,
-	})
-);
+const allowedOrigins = [
+	process.env.CLIENT_BASE_URL,
+	"http://localhost:3000",
+	"http://localhost:3001",
+	"http://localhost:5173",
+].filter(Boolean);
 
+const corsOptions = {
+	origin: (origin, callback) => {
+		if (!origin) return callback(null, true);
+		if (allowedOrigins.includes(origin)) return callback(null, true);
+		if (!isProduction && origin.startsWith("http://localhost")) return callback(null, true);
+		callback(new Error(`CORS blocked: ${origin}`));
+	},
+	credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const sessionMiddleware = session({
-    name: "connect.sid",
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-		// secure:true and sameSite:"none" only work over HTTPS (production)
-		// On localhost (HTTP) both must be false/lax or the session cookie won't be sent
-        mongoUrl: process.env.MONGO_URI,
-        ttl: 7 * 24 * 60 * 60,
-    }),
-    cookie: {
-        secure: isProduction,
-        sameSite: isProduction ? "none" : "lax",
-        httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-    },
+	name: "connect.sid",
+	secret: process.env.SESSION_SECRET,
+	resave: false,
+	saveUninitialized: false,
+	store: MongoStore.create({
+		mongoUrl: process.env.MONGO_URI,
+		ttl: 7 * 24 * 60 * 60,
+		autoRemove: "native",
+	}),
+	cookie: {
+		secure: isProduction,
+		sameSite: isProduction ? "none" : "lax",
+		httpOnly: true,
+		maxAge: 7 * 24 * 60 * 60 * 1000,
+	},
 });
 
 app.use(sessionMiddleware);
@@ -60,15 +70,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/chat", chatRoutes);
 
-// Socket.io setup
 const io = new Server(httpServer, {
-	cors: {
-		origin: process.env.CLIENT_BASE_URL,
-		credentials: true,
-	},
+	cors: corsOptions,
 });
 
-// Share session with socket.io
 io.use((socket, next) => {
 	sessionMiddleware(socket.request, {}, next);
 });
@@ -79,46 +84,24 @@ io.use((socket, next) => {
 	});
 });
 
-// Track online users: username -> socketId
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
 	const user = socket.request.user;
-	if (!user) {
-		socket.disconnect();
-		return;
-	}
+	if (!user) { socket.disconnect(); return; }
 
 	const username = user.username;
 	onlineUsers.set(username, socket.id);
 	io.emit("online_users", Array.from(onlineUsers.keys()));
-
-	console.log(`✅ ${username} connected via socket`);
+	console.log(`✅ ${username} connected`);
 
 	socket.on("send_message", async ({ to, content }) => {
 		if (!content?.trim()) return;
 		try {
-			const message = await Message.create({
-				senderId: username,
-				receiverId: to,
-				content: content.trim(),
-			});
-
-			const payload = {
-				_id: message._id,
-				senderId: username,
-				receiverId: to,
-				content: message.content,
-				createdAt: message.createdAt,
-			};
-
-			// Send to recipient if online
+			const message = await Message.create({ senderId: username, receiverId: to, content: content.trim() });
+			const payload = { _id: message._id, senderId: username, receiverId: to, content: message.content, createdAt: message.createdAt };
 			const recipientSocketId = onlineUsers.get(to);
-			if (recipientSocketId) {
-				io.to(recipientSocketId).emit("receive_message", payload);
-			}
-
-			// Echo back to sender
+			if (recipientSocketId) io.to(recipientSocketId).emit("receive_message", payload);
 			socket.emit("message_sent", payload);
 		} catch (err) {
 			socket.emit("error", { message: "Failed to send message" });
@@ -134,5 +117,5 @@ io.on("connection", (socket) => {
 
 await connectMongoDB();
 httpServer.listen(PORT, () => {
-	console.log(`🚀 Server running on port ${PORT} [${isProduction ? "production" : "development"}]`);
+	console.log(`🚀 Server on port ${PORT} [${isProduction ? "production" : "development"}]`);
 });
