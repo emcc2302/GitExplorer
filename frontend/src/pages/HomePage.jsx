@@ -38,10 +38,12 @@ const HomePage = () => {
 	}, []);
 
 	// Load logged-in user's profile if authenticated, else default profile
-	useEffect(() => {
-		const usernameToLoad = authUser ? authUser.username : DEFAULT_USERNAME;
-		getUserProfileAndRepos(usernameToLoad);
-	}, [authUser, getUserProfileAndRepos]);
+	// REPLACE with this
+useEffect(() => {
+    const usernameToLoad = authUser ? authUser.username : DEFAULT_USERNAME;
+    getUserProfileAndRepos(usernameToLoad);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [authUser?.username]);
 
 	const onSearch = async (e, username) => {
 		e.preventDefault();
