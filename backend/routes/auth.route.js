@@ -1,25 +1,30 @@
 import express from "express";
 import passport from "passport";
+import mongoose from "mongoose";
 
 const router = express.Router();
 
-// Track used OAuth codes to prevent double-processing
-const usedCodes = new Set();
+// Store used OAuth codes in MongoDB so all instances share state
+const OAuthCode = mongoose.model("OAuthCode", new mongoose.Schema({
+    code: { type: String, unique: true },
+    createdAt: { type: Date, default: Date.now, expires: 120 } // auto-delete after 2 min
+}));
 
 router.get("/github", passport.authenticate("github", { scope: ["user:email"] }));
 
-router.get("/github/callback", (req, res, next) => {
+router.get("/github/callback", async (req, res, next) => {
     const code = req.query.code;
 
-    // If this code was already used, redirect straight to frontend
-    if (!code || usedCodes.has(code)) {
+    if (!code) return res.redirect(process.env.CLIENT_BASE_URL + "/login");
+
+    try {
+        // Try to insert the code — if it already exists, duplicate request
+        await OAuthCode.create({ code });
+    } catch (err) {
+        // Duplicate code — second instance trying to process same request
         console.log("Duplicate OAuth callback ignored");
         return res.redirect(process.env.CLIENT_BASE_URL + "/");
     }
-
-    usedCodes.add(code);
-    // Clean up old codes after 1 minute
-    setTimeout(() => usedCodes.delete(code), 60000);
 
     passport.authenticate("github", {
         failureRedirect: process.env.CLIENT_BASE_URL + "/login",
