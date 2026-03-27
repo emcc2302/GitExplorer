@@ -2,14 +2,19 @@ import passport from "passport";
 import { Strategy as GitHubStrategy } from "passport-github2";
 import User from "../models/user.model.js";
 
-// env is already loaded by server.js via config/env.js — no need to re-import dotenv here
-
+// Serialize only the user ID into the session
 passport.serializeUser(function (user, done) {
-	done(null, user);
+	done(null, user._id.toString());
 });
 
-passport.deserializeUser(function (obj, done) {
-	done(null, obj);
+// Deserialize by fetching fresh user from DB using the stored ID
+passport.deserializeUser(async function (id, done) {
+	try {
+		const user = await User.findById(id);
+		done(null, user);
+	} catch (err) {
+		done(err, null);
+	}
 });
 
 passport.use(
@@ -21,9 +26,9 @@ passport.use(
 		},
 		async function (accessToken, refreshToken, profile, done) {
 			try {
-				const user = await User.findOne({ username: profile.username });
+				let user = await User.findOne({ username: profile.username });
 				if (!user) {
-					const newUser = new User({
+					user = new User({
 						name: profile.displayName,
 						username: profile.username,
 						profileUrl: profile.profileUrl,
@@ -31,11 +36,9 @@ passport.use(
 						likedProfiles: [],
 						likedBy: [],
 					});
-					await newUser.save();
-					done(null, newUser);
-				} else {
-					done(null, user);
+					await user.save();
 				}
+				done(null, user);
 			} catch (err) {
 				done(err, null);
 			}
