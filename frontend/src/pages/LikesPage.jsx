@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FaHeart } from "react-icons/fa";
 import toast from "react-hot-toast";
 import { formatDate } from "../utils/functions";
+import { authFetch } from "../context/AuthContext";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -11,27 +12,15 @@ const LikesPage = () => {
 	useEffect(() => {
 		const getLikes = async () => {
 			try {
-				const res = await fetch(
-					`${API_BASE_URL}/api/users/likes`,
-					{
-						credentials: "include",
-					}
-				);
-
-				if (!res.ok) {
-					throw new Error("Failed to fetch likes");
-				}
-
+				const res = await authFetch(`${API_BASE_URL}/api/users/likes`);
+				if (!res.ok) throw new Error("Failed to fetch likes");
 				const data = await res.json();
-
 				if (data.error) throw new Error(data.error);
-
 				setLikes(data.likedBy);
 			} catch (error) {
 				toast.error(error.message);
 			}
 		};
-
 		getLikes();
 	}, []);
 
@@ -50,27 +39,13 @@ const LikesPage = () => {
 					{likes.map((user, idx) => (
 						<tr className="bg-glass border-b" key={user.username}>
 							<td className="w-4 p-4">{idx + 1}</td>
-
-							<th
-								scope="row"
-								className="flex items-center px-6 py-4 whitespace-nowrap"
-							>
-								<img
-									className="w-10 h-10 rounded-full"
-									src={user.avatarUrl}
-									alt="User Avatar"
-								/>
+							<th scope="row" className="flex items-center px-6 py-4 whitespace-nowrap">
+								<img className="w-10 h-10 rounded-full" src={user.avatarUrl} alt="User Avatar" />
 								<div className="ps-3">
-									<div className="text-base font-semibold">
-										{user.username}
-									</div>
+									<div className="text-base font-semibold">{user.username}</div>
 								</div>
 							</th>
-
-							<td className="px-6 py-4">
-								{formatDate(user.likedDate)}
-							</td>
-
+							<td className="px-6 py-4">{formatDate(user.likedDate)}</td>
 							<td className="px-6 py-4">
 								<div className="flex items-center">
 									<FaHeart size={22} className="text-red-500 mx-2" />
