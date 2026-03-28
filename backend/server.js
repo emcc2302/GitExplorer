@@ -23,19 +23,22 @@ const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === "production";
 
-const allowedOrigins = [
-	process.env.CLIENT_BASE_URL,
-	"http://localhost:3000",
-	"http://localhost:3001",
-	"http://localhost:5173",
-].filter(Boolean);
+const isAllowedOrigin = (origin) => {
+	if (!origin) return true; // allow non-browser (curl, Postman)
+	if (!isProduction && origin.startsWith("http://localhost")) return true;
+	if (origin === process.env.CLIENT_BASE_URL) return true;
+	// Allow ALL Vercel preview deployments for this project
+	if (origin.match(/https:\/\/git-explorer-.*\.vercel\.app$/)) return true;
+	return false;
+};
 
 const corsOptions = {
 	origin: (origin, callback) => {
-		if (!origin) return callback(null, true);
-		if (allowedOrigins.includes(origin)) return callback(null, true);
-		if (!isProduction && origin.startsWith("http://localhost")) return callback(null, true);
-		callback(new Error(`CORS blocked: ${origin}`));
+		if (isAllowedOrigin(origin)) {
+			callback(null, true);
+		} else {
+			callback(new Error(`CORS blocked: ${origin}`));
+		}
 	},
 	credentials: true,
 };
@@ -70,14 +73,9 @@ app.use("/api/users", userRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/chat", chatRoutes);
 
-const io = new Server(httpServer, {
-	cors: corsOptions,
-});
+const io = new Server(httpServer, { cors: corsOptions });
 
-io.use((socket, next) => {
-	sessionMiddleware(socket.request, {}, next);
-});
-
+io.use((socket, next) => { sessionMiddleware(socket.request, {}, next); });
 io.use((socket, next) => {
 	passport.initialize()(socket.request, {}, () => {
 		passport.session()(socket.request, {}, next);
@@ -89,7 +87,6 @@ const onlineUsers = new Map();
 io.on("connection", (socket) => {
 	const user = socket.request.user;
 	if (!user) { socket.disconnect(); return; }
-
 	const username = user.username;
 	onlineUsers.set(username, socket.id);
 	io.emit("online_users", Array.from(onlineUsers.keys()));
