@@ -9,8 +9,6 @@ export const useAuthContext = () => {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-// Socket connects to explicit backend URL if set, otherwise same origin (Vite proxy)
 const SOCKET_URL = API_BASE_URL || "http://localhost:5000";
 
 export const AuthContextProvider = ({ children }) => {
@@ -23,10 +21,26 @@ export const AuthContextProvider = ({ children }) => {
 		const checkUserLoggedIn = async () => {
 			setLoading(true);
 			try {
+				// Check if redirected from OAuth with token
+				const params = new URLSearchParams(window.location.search);
+				const token = params.get("token");
+
+				if (token) {
+					// Remove token from URL immediately
+					window.history.replaceState({}, "", "/");
+					const res = await fetch(`${API_BASE_URL}/api/auth/verify-token?token=${token}`, {
+						credentials: "include",
+					});
+					const data = await res.json();
+					setAuthUser(data.user);
+					setLoading(false);
+					return;
+				}
+
+				// Normal session check
 				const res = await fetch(`${API_BASE_URL}/api/auth/check`, {
 					credentials: "include",
 				});
-				if (!res.ok) throw new Error("Failed to check authentication");
 				const data = await res.json();
 				setAuthUser(data.user);
 			} catch (error) {
