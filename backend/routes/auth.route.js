@@ -45,11 +45,25 @@ router.get("/verify-token", async (req, res) => {
 		const decoded = jwt.verify(token, process.env.SESSION_SECRET);
 		const user = await User.findById(decoded.userId);
 		if (!user) return res.json({ user: null });
+
+		// Login and explicitly save session before responding
 		req.login(user, (err) => {
-			if (err) return res.json({ user: null });
-			res.json({ user });
+			if (err) {
+				console.error("req.login error:", err);
+				return res.json({ user: null });
+			}
+			// Force session save before sending response
+			req.session.save((saveErr) => {
+				if (saveErr) {
+					console.error("Session save error:", saveErr);
+					return res.json({ user: null });
+				}
+				console.log("✅ Session saved for:", user.username);
+				res.json({ user });
+			});
 		});
 	} catch (err) {
+		console.error("Token verify error:", err);
 		res.json({ user: null });
 	}
 });
