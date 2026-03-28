@@ -26,14 +26,15 @@ router.get("/github/callback", async (req, res, next) => {
 
 	passport.authenticate("github", {
 		failureRedirect: process.env.CLIENT_BASE_URL + "/login",
-		session: true,
+		session: false, // Don't use session — use JWT instead
 	})(req, res, next);
 }, (req, res) => {
 	console.log("✅ GitHub OAuth success for:", req.user?.username);
+	// Create a long-lived JWT (7 days)
 	const token = jwt.sign(
 		{ userId: req.user._id.toString() },
 		process.env.SESSION_SECRET,
-		{ expiresIn: "5m" }
+		{ expiresIn: "7d" }
 	);
 	res.redirect(`${process.env.CLIENT_BASE_URL}/?token=${token}`);
 });
@@ -45,43 +46,34 @@ router.get("/verify-token", async (req, res) => {
 		const decoded = jwt.verify(token, process.env.SESSION_SECRET);
 		const user = await User.findById(decoded.userId);
 		if (!user) return res.json({ user: null });
-
-		// Login and explicitly save session before responding
-		req.login(user, (err) => {
-			if (err) {
-				console.error("req.login error:", err);
-				return res.json({ user: null });
-			}
-			// Force session save before sending response
-			req.session.save((saveErr) => {
-				if (saveErr) {
-					console.error("Session save error:", saveErr);
-					return res.json({ user: null });
-				}
-				console.log("✅ Session saved for:", user.username);
-				res.json({ user });
-			});
-		});
+		console.log("✅ Token verified for:", user.username);
+		res.json({ user });
 	} catch (err) {
-		console.error("Token verify error:", err);
+		console.error("Token verify error:", err.message);
 		res.json({ user: null });
 	}
 });
 
-router.get("/check", (req, res) => {
-	if (req.isAuthenticated()) {
-		return res.json({ user: req.user });
+// Check auth via JWT token in Authorization header
+router.get("/check", async (req, res) => {
+	const authHeader = req.headers.authorization;
+	if (authHeader && authHeader.startsWith("Bearer ")) {
+		const token = authHeader.split(" ")[1];
+		try {
+			const decoded = jwt.verify(token, process.env.SESSION_SECRET);
+			const user = await User.findById(decoded.userId);
+			return res.json({ user });
+		} catch (err) {
+			return res.json({ user: null });
+		}
 	}
+	// Fallback to session
+	if (req.isAuthenticated()) return res.json({ user: req.user });
 	res.json({ user: null });
 });
 
 router.get("/logout", (req, res) => {
-	req.logout((err) => {
-		req.session.destroy(() => {
-			res.clearCookie("connect.sid");
-			res.json({ message: "Logged out" });
-		});
-	});
+	res.json({ message: "Logged out" });
 });
 
 export default router;

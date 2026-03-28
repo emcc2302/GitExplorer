@@ -1,32 +1,18 @@
 import { FaHeart } from "react-icons/fa";
 import toast from "react-hot-toast";
-import { useAuthContext } from "../context/AuthContext";
+import { useAuthContext, authFetch } from "../context/AuthContext";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const LikeProfile = ({ userProfile }) => {
 	const { authUser } = useAuthContext();
-
 	const isOwnProfile = authUser?.username === userProfile.login;
 
 	const handleLikeProfile = async () => {
 		try {
-			const res = await fetch(
-				`${API_BASE_URL}/api/users/like/${userProfile.login}`,
-				{
-					method: "POST",
-					credentials: "include",
-				}
-			);
-
-			if (!res.ok) {
-				throw new Error("Failed to like profile");
-			}
-
+			const res = await authFetch(`${API_BASE_URL}/api/users/like/${userProfile.login}`, { method: "POST" });
 			const data = await res.json();
-
 			if (data.error) throw new Error(data.error);
-
 			toast.success(data.message);
 		} catch (error) {
 			toast.error(error.message);

@@ -1,5 +1,4 @@
 import "./config/env.js";
-
 import express from "express";
 import cors from "cors";
 import passport from "passport";
@@ -7,16 +6,16 @@ import session from "express-session";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import MongoStore from "connect-mongo";
+import jwt from "jsonwebtoken";
 
 import "./passport/github.auth.js";
-
 import authRoutes from "./routes/auth.route.js";
 import userRoutes from "./routes/user.route.js";
 import exploreRoutes from "./routes/explore.route.js";
 import chatRoutes from "./routes/chat.route.js";
-
 import connectMongoDB from "./db/connectMongoDB.js";
 import { Message } from "./models/user.model.js";
+import User from "./models/user.model.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -24,21 +23,17 @@ const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === "production";
 
 const isAllowedOrigin = (origin) => {
-	if (!origin) return true; // allow non-browser (curl, Postman)
+	if (!origin) return true;
 	if (!isProduction && origin.startsWith("http://localhost")) return true;
 	if (origin === process.env.CLIENT_BASE_URL) return true;
-	// Allow ALL Vercel preview deployments for this project
 	if (origin.match(/https:\/\/git-explorer-.*\.vercel\.app$/)) return true;
 	return false;
 };
 
 const corsOptions = {
 	origin: (origin, callback) => {
-		if (isAllowedOrigin(origin)) {
-			callback(null, true);
-		} else {
-			callback(new Error(`CORS blocked: ${origin}`));
-		}
+		if (isAllowedOrigin(origin)) callback(null, true);
+		else callback(new Error(`CORS blocked: ${origin}`));
 	},
 	credentials: true,
 };
@@ -75,19 +70,28 @@ app.use("/api/chat", chatRoutes);
 
 const io = new Server(httpServer, { cors: corsOptions });
 
-io.use((socket, next) => { sessionMiddleware(socket.request, {}, next); });
-io.use((socket, next) => {
-	passport.initialize()(socket.request, {}, () => {
-		passport.session()(socket.request, {}, next);
-	});
+// Authenticate socket via JWT
+io.use(async (socket, next) => {
+	try {
+		const token = socket.handshake.auth?.token;
+		if (token) {
+			const decoded = jwt.verify(token, process.env.SESSION_SECRET);
+			const user = await User.findById(decoded.userId);
+			if (user) {
+				socket.user = user;
+				return next();
+			}
+		}
+		next(new Error("Unauthorized"));
+	} catch (err) {
+		next(new Error("Unauthorized"));
+	}
 });
 
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
-	const user = socket.request.user;
-	if (!user) { socket.disconnect(); return; }
-	const username = user.username;
+	const username = socket.user.username;
 	onlineUsers.set(username, socket.id);
 	io.emit("online_users", Array.from(onlineUsers.keys()));
 	console.log(`✅ ${username} connected`);
