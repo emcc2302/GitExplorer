@@ -1,8 +1,7 @@
 # 🚀 GitExplorer – MERN GitHub Explorer App
 
-GitExplorer is a full-stack **MERN application** that allows users to explore GitHub profiles and repositories, authenticate using GitHub OAuth, like other users’ profiles, and discover popular repositories by programming language.
-
-This project is built with **production-grade authentication, API handling, and deployment** using modern best practices.
+GitExplorer is a full-stack MERN application that allows users to explore GitHub profiles and repositories, authenticate using GitHub OAuth, like other users' profiles, discover popular repositories by programming language, and chat in real-time with other users.
+This project is built with production-grade authentication, API handling, real-time communication, and deployment using modern best practices.
 
 ---
 
@@ -14,6 +13,7 @@ This project is built with **production-grade authentication, API handling, and 
 * ❤️ View profiles that liked you
 * 🔍 Explore trending repositories by language
 * ⚡ Authenticated GitHub API requests (avoids rate limits)
+* 💬 Real-time chat system (Socket.io)
 * 🌐 Fully deployed (Frontend + Backend)
 * 🧠 Clean architecture with controllers, routes, and middleware
 
